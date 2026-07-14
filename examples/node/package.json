@@ -1,0 +1,13 @@
+{
+  "name": "spresenter-api-example-node",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Spresenter API integration example (Node.js)",
+  "scripts": {
+    "live": "node example-live.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

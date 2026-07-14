@@ -1,0 +1,66 @@
+# WebSocket — real‑time events
+
+Instead of polling for state, connect to the WebSocket and react to the events
+Spresenter emits.
+
+`<WS_BASE>` is your API base URL with the `http`/`https` scheme swapped for
+`ws`/`wss` (e.g. if `<BASE>` is `http://HOST/api/v1`, then `<WS_BASE>` is
+`ws://HOST/api/v1`).
+
+## Connecting
+
+```
+<WS_BASE>/ws?token=spk_YOUR_TOKEN
+```
+
+- The token goes in the `?token=` query string.
+- If the API is off, the handshake is rejected with `403`.
+- If the token is invalid/disabled, the handshake is rejected with `401`.
+
+On connect, the server sends:
+
+```json
+{ "key": "api.hello", "data": { "scopes": ["live:read", "media:read"] } }
+```
+
+## Messages
+
+Each message is a JSON `{ "key": string, "data"?: any }`. The `key` identifies the
+event. You **only receive** events your token has scopes for.
+
+| `key` | Required scope | Meaning |
+|---|---|---|
+| `api.hello` | (always) | Initial handshake, with your scopes |
+| `refresh.live.<output>` | `live:read` | A layer's content on the output changed |
+| `refresh.live.go.<output>` | `live:read` | Crossfade sync signal |
+| `refresh.state.<output>` | `live:read` | A layer's show/opacity/blend changed |
+| `refresh.master.<output>` | `live:read` | The output's master opacity changed |
+| `media.state` | `media:read` | Play/pause changed |
+| `media.time` | `media:read` | Seek |
+| `media.heartbeat` | `media:read` | Playback progress (`data.time`) |
+| `timer.state` | `timer:read` | The timer changed |
+| `theme.updated` | `assets:read` | A theme was updated |
+| `event.updated` | `events:read` | The active event changed |
+
+> Events are **notifications**: they usually don't carry the new data itself. When
+> you receive `refresh.live.0`, fetch the updated state with
+> `GET <BASE>/outputs/0/layers/:layer`.
+
+## Closing
+
+- If the token is **revoked** or **disabled** while the socket is open, the server
+  closes the connection with close code **`4401`**.
+- If the API is turned off, all sockets are closed.
+
+Handle `4401` by reconnecting only after obtaining a new/re‑enabled token.
+
+## Quick example (wscat)
+
+```bash
+npx wscat -c "<WS_BASE>/ws?token=spk_YOUR_TOKEN"
+# < {"key":"api.hello","data":{"scopes":["live:read"]}}
+# (change something live in the app)
+# < {"key":"refresh.live.0","data":{"revisionId":"…","transitionMs":500}}
+```
+
+Full clients in [Node.js](../examples/node/) and [Python](../examples/python/).
