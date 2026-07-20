@@ -97,6 +97,37 @@ effects are preserved).
 ### `POST <BASE>/outputs/:output/master` — `live:write`
 `{ "opacity": 0.8 }` → sets the output's master opacity.
 
+## Live elements
+
+Control an **individual theme element** of whatever is live on a layer, in real
+time — change its text, inject raw HTML, tweak CSS, toggle visibility or swap its
+source — **without reloading the theme** (no crossfade). Target it by its element
+`id` in the theme.
+
+### `POST <BASE>/outputs/:output/layers/:layer/elements/:elementId` — `live:write`
+Merges a patch into the element and broadcasts it. Body (all fields optional):
+
+```jsonc
+{
+  "text": "Welcome",                       // set text (goes through the template pipeline)
+  "html": "<b>Raw HTML</b>",               // raw HTML — bypasses templates
+  "css": { "color": "#fbbf24", "fontSize": "6vh" },
+  "visible": true,                          // toggle visibility
+  "src": "https://…/image.png"             // swap the source (IMAGE/VIDEO)
+}
+```
+
+Response: `{ "ok": true, "element": { …merged patch… } }`. Patches accumulate
+(each call merges into the current override) until the layer content changes.
+
+### `GET <BASE>/outputs/:output/elements` — `live:read`
+The element overrides currently active on the output, keyed by layer then
+element id:
+
+```json
+{ "0": { "title": { "text": "Welcome" } }, "1": { "logo": { "visible": false } } }
+```
+
 ## Assets
 
 ### `GET <BASE>/assets` — `assets:read`
@@ -194,6 +225,26 @@ cache. Response: `{ "thumbnail": "/thumbnails/previews/…" }`.
 ### `GET <BASE>/timer` — `timer:read`
 ### `POST <BASE>/timer` — `timer:write`
 Sets the timer (body = timer state). `DELETE <BASE>/timer` clears it.
+
+## Automation (webhook)
+
+### `POST <BASE>/automation/trigger/:routeId` — no token
+Fires Spresenter automations that use the **`apiTrigger`** trigger, filtered by
+`routeId`. This route is **open** (no `Authorization` needed) so it can be called
+as a plain webhook — but it only responds while the external API is **enabled**
+in Settings.
+
+```bash
+curl -X POST "<BASE>/automation/trigger/my-route" \
+  -H "Content-Type: application/json" -d '{"foo":"bar"}'
+```
+
+The request `method`, `body` and `query` are forwarded to the matching automation
+node. Response: `202 Accepted` with `{ "ok": true, "routeId": "my-route" }`.
+Returns `403 api_disabled` if the API is off.
+
+> Because it takes no token, treat the `routeId` as a shared secret and only
+> expose the API on a trusted network.
 
 ## WebSocket
 

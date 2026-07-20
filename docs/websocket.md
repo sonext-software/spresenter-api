@@ -35,6 +35,8 @@ event. You **only receive** events your token has scopes for.
 | `refresh.live.go.<output>` | `live:read` | Crossfade sync signal |
 | `refresh.state.<output>` | `live:read` | A layer's show/opacity/blend changed |
 | `refresh.master.<output>` | `live:read` | The output's master opacity changed |
+| `element.update.<output>` | `live:read` | A live theme element was patched (`data`: `{ layer, elementId, patch }`) |
+| `element.reset.<output>` | `live:read` | Live element overrides were reset |
 | `media.state` | `media:read` | Play/pause changed |
 | `media.time` | `media:read` | Seek |
 | `media.heartbeat` | `media:read` | Playback progress (`data.time`) |
