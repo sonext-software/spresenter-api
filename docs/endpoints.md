@@ -226,7 +226,7 @@ cache. Response: `{ "thumbnail": "/thumbnails/previews/…" }`.
 ### `POST <BASE>/timer` — `timer:write`
 Sets the timer (body = timer state). `DELETE <BASE>/timer` clears it.
 
-## Automation (webhook)
+## Automation
 
 ### `POST <BASE>/automation/trigger/:routeId` — no token
 Fires Spresenter automations that use the **`apiTrigger`** trigger, filtered by
@@ -245,6 +245,42 @@ Returns `403 api_disabled` if the API is off.
 
 > Because it takes no token, treat the `routeId` as a shared secret and only
 > expose the API on a trusted network.
+
+### `POST <BASE>/automation/macros/:id/run` — per‑macro
+Runs a **macro** by its id. Whether this route is available, and whether it needs
+a token, is decided **per macro** in the macro editor (open the macro, select no
+node, and use the **Run via API** section in the sidebar):
+
+- **Run via API** off → `403 macro_api_disabled`.
+- **Run via API** on, token required (default) → send a valid token
+  (`Authorization: Bearer` **or** `?token=`); otherwise `401 unauthorized`.
+- **Run via API** on + **Allow without token** → open, no token needed.
+
+The external API must also be enabled in Settings, otherwise `403 api_disabled`.
+
+```bash
+# token-protected macro
+curl -X POST "<BASE>/automation/macros/<macro-id>/run" \
+  -H "Authorization: Bearer spk_YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"song":"Amazing Grace","verse":2}'
+
+# macro liberada (sem token)
+curl -X POST "<BASE>/automation/macros/<macro-id>/run" \
+  -H "Content-Type: application/json" -d '{}'
+```
+
+Response: `202 Accepted` with `{ "ok": true, "id": "<macro-id>" }`.
+
+**Payload → Macro Start outputs.** The JSON body (merged with the query string,
+minus `token`) becomes the macro's payload. Variables declared on the macro
+(sidebar → **Payload variables**, each with a name + type) are exposed as the
+**output ports of the "Macro Start" node**, so downstream nodes can read
+`payload.<name>` through a wire.
+
+> The macro id and the ready‑to‑copy route are shown in the macro editor sidebar
+> (with no node selected). For an open macro, treat the id as a shared secret and
+> keep the API on a trusted network.
 
 ## WebSocket
 
