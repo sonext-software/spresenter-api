@@ -68,6 +68,40 @@ Sets the live content. Two body shapes:
 
 Response: `{ "ok": true }`. The transition/crossfade fires automatically.
 
+> **This does not make the layer visible.** Content and visibility are separate:
+> on a hidden layer the presentation goes live and nothing reaches the screen.
+> Follow up with `PATCH <BASE>/outputs/:output/layers/:layer/state`
+> `{"show":true}`. (The `/music` endpoint below is the exception — it flips
+> `show` for you.)
+
+#### Announcements (text on screen)
+
+There is no announcements endpoint: an announcement is not a stored asset, so it
+goes through body shape **B** with `asset.type` set to `"announcement"` and no
+guid. A **theme is mandatory** — nothing resolves one for an announcement (unlike
+`/music`), and the renderer draws nothing without it. Pass `themeRef` with the
+guid of a **saved** theme asset; find one with `GET <BASE>/assets?type=theme`
+(`data.assetType === "announcement"`), or copy it from the theme editor's ⋮ menu
+→ "Copy theme ID". Bundled/system themes have no guid and cannot be referenced
+this way — save a copy first.
+
+```json
+{ "presentation": {
+    "title": "Announcement",
+    "asset": { "title": "Announcement", "author": null, "type": "announcement" },
+    "themeRef": "5b1c…",
+    "props": { "mensagem": "Prayer meeting at 7:30pm" } } }
+```
+
+`props` fills the theme's `{placeholders}` — the stock announcement theme uses a
+single `{mensagem}`; your own theme may use any names. Then show the layer, as
+above. To reword it afterwards without a crossfade, patch the element in place
+(see **Live elements**). There is no server‑side auto‑clear: schedule your own
+`DELETE`.
+
+Full walkthroughs: [curl](../examples/curl.md#show-an-announcement-text-on-screen)
+and [Node.js](../examples/node/example-announcement.mjs).
+
 ### `DELETE <BASE>/outputs/:output/layers/:layer` — `live:write`
 Clears the layer. Response `{ "ok": true }`.
 

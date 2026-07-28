@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Spresenter API integration example (Node.js)",
   "scripts": {
-    "live": "node example-live.mjs"
+    "live": "node example-live.mjs",
+    "announcement": "node example-announcement.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0"

@@ -38,6 +38,8 @@ export class SpresenterClient {
 
   // Outputs / layers
   outputs() { return this.#req('GET', '/outputs'); }
+  /** Global layer definitions (with `defaultForTypes`) — the same for every output. */
+  layerDefs() { return this.#req('GET', '/layers'); }
   layers(output) { return this.#req('GET', `/outputs/${output}/layers`); }
   getLayer(output, layer) { return this.#req('GET', `/outputs/${output}/layers/${layer}`); }
   setLive(output, layer, body) { return this.#req('POST', `/outputs/${output}/layers/${layer}`, body); }
@@ -46,6 +48,12 @@ export class SpresenterClient {
   }
   clearLayer(output, layer) { return this.#req('DELETE', `/outputs/${output}/layers/${layer}`); }
   patchState(output, layer, state) { return this.#req('PATCH', `/outputs/${output}/layers/${layer}/state`, state); }
+
+  // Live elements — patch one theme element of whatever is live, no reload.
+  setElement(output, layer, elementId, patch) {
+    return this.#req('POST', `/outputs/${output}/layers/${layer}/elements/${elementId}`, patch);
+  }
+  elements(output) { return this.#req('GET', `/outputs/${output}/elements`); }
 
   // Assets
   assets(params = {}) {

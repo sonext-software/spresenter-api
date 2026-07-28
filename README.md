@@ -31,13 +31,19 @@ First call — discover what your token can do:
 curl <BASE> -H "Authorization: Bearer spk_YOUR_TOKEN"
 ```
 
-Put an asset live on output `0`, layer `2`:
+Put an asset live on output `0`, layer `2` — then show the layer. These are two
+separate steps: setting the content does not make the layer visible.
 
 ```bash
 curl -X POST <BASE>/outputs/0/layers/2 \
   -H "Authorization: Bearer spk_YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"assetGuid":"<asset-guid>"}'
+
+curl -X PATCH <BASE>/outputs/0/layers/2/state \
+  -H "Authorization: Bearer spk_YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"show":true,"opacity":1}'
 ```
 
 ## Concepts
@@ -45,7 +51,9 @@ curl -X POST <BASE>/outputs/0/layers/2 \
 - **Output** — a logical projection target, identified by an index (`0`, `1`, …).
   List them with `GET <BASE>/outputs`.
 - **Layer** — each output has N independent layers, also addressed by index. A
-  layer is where a presentation (song, video, image, text…) goes live.
+  layer is where a presentation (song, video, image, text…) goes live. Its
+  **content** and its **visibility** are set by different calls — putting
+  something live never flips the layer's `show` on its own.
 - **Asset** — a media/content item (song, video, image, presentation…),
   identified by a `guid`.
 - **Event** — the service/setlist: the list of assets for the gathering.
