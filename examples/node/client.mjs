@@ -133,8 +133,10 @@ export class SpresenterClient {
     return this.#req('POST', '/assets/folder', { title, category, ...(parent ? { parent } : {}) });
   }
 
-  // Event
-  activeEvent() { return this.#req('GET', '/event'); }
+  // Setlist
+  activeSetlist() { return this.#req('GET', '/setlist'); }
+  /** @deprecated renamed to activeSetlist(). */
+  activeEvent() { return this.activeSetlist(); }
 
   // Media
   media() { return this.#req('GET', '/media'); }

@@ -40,12 +40,16 @@ creating the token.
 | `assets:write` | **Add** assets: upload files, create songs with structured lyrics, create folders |
 | `media:read` | Read media playback state |
 | `media:write` | Control playback (play/pause/seek) |
-| `events:read` | Read the active event and saved events |
+| `setlists:read` | Read the active setlist and the saved setlists |
 | `timer:read` | Read the timer state |
 | `timer:write` | Control the timer |
 
 Read and write are separate scopes: `live:write` does **not** imply `live:read`.
 Check both if you need both.
+
+> **Renamed:** `events:read` is now `setlists:read` ("event" became "setlist"
+> throughout the app). The old name is still accepted — a token created before
+> the rename keeps working and simply reports the new name.
 
 ## Error responses
 

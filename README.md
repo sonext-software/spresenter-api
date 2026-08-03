@@ -58,7 +58,9 @@ curl -X PATCH <BASE>/outputs/0/layers/2/state \
   identified by a `guid`. You can also **add** assets (`assets:write`): upload a
   file, or create a song with structured lyrics — see
   [Adding assets](docs/endpoints.md#adding-assets).
-- **Event** — the service/setlist: the list of assets for the gathering.
+- **Setlist** — the service: the list of assets for the gathering. (It was called
+  "event" in earlier versions; the old scope and paths still work — see
+  [Setlist](docs/endpoints.md#setlist).)
 
 ## Notes
 

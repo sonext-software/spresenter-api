@@ -433,24 +433,29 @@ curl -X POST "$BASE/assets/folder" -H "Authorization: Bearer $TOKEN" \
   -d '{ "title": "Sunday 12/07", "category": "video" }'
 ```
 
-## Event
+## Setlist
 
-### `GET <BASE>/event` — `events:read`
-The **active** event (whatever is open in the app right now, even unsaved). Assets
+> **Renamed:** these used to be `/event`, `/events`, `/events/:id` under the
+> `events:read` scope. The old paths still respond (with their old response
+> shape — the active one returns the object under `event` instead of `setlist`),
+> so existing integrations keep working, but new code should use the names below.
+
+### `GET <BASE>/setlist` — `setlists:read`
+The **active** setlist (whatever is open in the app right now, even unsaved). Assets
 are returned **without the `data` field** to keep the payload small — fetch the
 full asset from `GET <BASE>/assets/:guid` when needed.
 
 ```json
-{ "active": true, "event": { "title": "Sunday service", "schedules": [ { "id": "…", "title": "Worship", "assets": [ { "guid": "…", "title": "…", "type": "music" } ] } ], "assets": [] } }
+{ "active": true, "setlist": { "title": "Sunday service", "schedules": [ { "id": "…", "title": "Worship", "assets": [ { "guid": "…", "title": "…", "type": "music" } ] } ], "assets": [] } }
 ```
 
-If no event is open: `{ "active": false }`.
+If no setlist is open: `{ "active": false }`.
 
-### `GET <BASE>/events` — `events:read`
-Summaries of the **saved** events (`id`, `title`, `thumbnail`, `modified`).
+### `GET <BASE>/setlists` — `setlists:read`
+Summaries of the **saved** setlists (`id`, `title`, `thumbnail`, `modified`).
 
-### `GET <BASE>/events/:id` — `events:read`
-Full saved event (schedules + assets).
+### `GET <BASE>/setlists/:id` — `setlists:read`
+Full saved setlist (schedules + assets).
 
 ## Media
 

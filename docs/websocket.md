@@ -42,11 +42,15 @@ event. You **only receive** events your token has scopes for.
 | `media.heartbeat` | `media:read` | Playback progress (`data.time`) |
 | `timer.state` | `timer:read` | The timer changed |
 | `theme.updated` | `assets:read` | A theme was updated |
-| `event.updated` | `events:read` | The active event changed |
+| `setlist.updated` | `setlists:read` | The active setlist changed |
 
 > Events are **notifications**: they usually don't carry the new data itself. When
 > you receive `refresh.live.0`, fetch the updated state with
 > `GET <BASE>/outputs/0/layers/:layer`.
+
+> **Renamed:** `setlist.updated` used to be `event.updated`. The old key is
+> **still broadcast** alongside the new one, so an existing listener keeps
+> working — but a client that subscribes to both will be notified twice.
 
 ## Closing
 

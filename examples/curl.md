@@ -229,10 +229,10 @@ curl -X POST "$BASE/outputs/0/layers/2/music" \
   -d '{"assetGuid":"SONG_GUID","index":1}'
 ```
 
-## Active event
+## Active setlist
 
 ```bash
-curl "$BASE/event" -H "$AUTH"
+curl "$BASE/setlist" -H "$AUTH"
 ```
 
 ## Media control
