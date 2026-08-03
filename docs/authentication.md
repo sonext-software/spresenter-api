@@ -37,6 +37,7 @@ creating the token.
 | `live:read` | Read what is live and each layer's state |
 | `live:write` | Change live content, layer state and master |
 | `assets:read` | List/search assets and access thumbnails |
+| `assets:write` | **Add** assets: upload files, create songs with structured lyrics, create folders |
 | `media:read` | Read media playback state |
 | `media:write` | Control playback (play/pause/seek) |
 | `events:read` | Read the active event and saved events |
@@ -62,6 +63,23 @@ All errors are JSON in the form:
 | 403 | `forbidden` | Valid token, missing the required scope (see `requiredScope`) |
 | 404 | `not_found` | Resource does not exist |
 | 400 | `bad_request` | Invalid parameter/body |
+
+Asset creation (`assets:write`) reports the specific problem instead of a generic
+`bad_request`:
+
+| HTTP | `code` | When |
+|---|---|---|
+| 400 | `invalid_filename` | `filename` missing or empty |
+| 400 | `unsupported_file` | Extension the app cannot ingest (see `POST <BASE>/assets`) |
+| 400 | `invalid_type` | `type` incompatible with the file's extension |
+| 400 | `invalid_source` | Neither or both of `contentBase64` / `sourceUrl` |
+| 400 | `invalid_base64` / `empty_content` | `contentBase64` could not be decoded |
+| 400 | `missing_title` / `missing_lyrics` / `missing_category` | Required field missing |
+| 400 | `not_a_music` | The guid is not a song (lyrics endpoints) |
+| 404 | `folder_not_found` | `parent` is not an existing folder |
+| 413 | `too_large` | Body/download over the limit |
+| 422 | `process_failed` | The file was rejected while being processed |
+| 502 | `download_failed` | `sourceUrl` could not be fetched |
 
 ## Enabling / disabling
 

@@ -68,22 +68,90 @@ Sets the live content. Two body shapes:
 
 Response: `{ "ok": true }`. The transition/crossfade fires automatically.
 
-> **This does not make the layer visible.** Content and visibility are separate:
-> on a hidden layer the presentation goes live and nothing reaches the screen.
-> Follow up with `PATCH <BASE>/outputs/:output/layers/:layer/state`
-> `{"show":true}`. (The `/music` endpoint below is the exception — it flips
-> `show` for you.)
+> **This is the raw shape: no theme is resolved and the layer is not shown.**
+> Shape **A** builds `{ title, asset }` and nothing else. For the types that need
+> a theme — `slidePresentation` and `image` render **empty** without one — use
+> `/present` below, which is what the app itself does. Content and visibility are
+> also separate: on a hidden layer the presentation goes live and nothing reaches
+> the screen, so follow up with
+> `PATCH <BASE>/outputs/:output/layers/:layer/state` `{"show":true}`.
+> (`/present`, `/music` and `/announcement` are the exceptions — they flip `show`
+> for you.)
 
-#### Announcements (text on screen)
+### `POST <BASE>/outputs/:output/layers/:layer/present` — `live:write`
+Puts an asset live the way the **app** does it — the equivalent of a double‑click
+in the app, or of the "Mudar apresentação" automation node. The server builds the
+whole presentation: theme per output (asset's own → output's default → system),
+the slide out of the `.scp` manifest, the display fit, the output's per‑type
+background, and the layer left **visible**.
 
-There is no announcements endpoint: an announcement is not a stored asset, so it
-goes through body shape **B** with `asset.type` set to `"announcement"` and no
-guid. A **theme is mandatory** — nothing resolves one for an announcement (unlike
-`/music`), and the renderer draws nothing without it. Pass `themeRef` with the
-guid of a **saved** theme asset; find one with `GET <BASE>/assets?type=theme`
-(`data.assetType === "announcement"`), or copy it from the theme editor's ⋮ menu
-→ "Copy theme ID". Bundled/system themes have no guid and cannot be referenced
-this way — save a copy first.
+Supported types: `image`, `backgroundVideo`, `slidePresentation`, `videoInput`,
+`music`. The multi‑part ones that need a navigator in the app (`bible`,
+`presentation`, `video`, `youtube`) answer `400 unsupported_type`.
+
+```jsonc
+{
+  "assetGuid": "5b1c…",   // also accepts "worshipwide/<file>"
+  "index": 0,             // slide index (slidePresentation) or verse (music); ignored elsewhere
+  "groupId": "…",         // song group — takes precedence over index
+  "fit": "contain",       // optional: cover | contain | fill (default: as configured in the app)
+  "background": true      // optional: apply the output's per-type background (default true)
+}
+```
+
+Response: `{ "ok": true, "type": "slidePresentation", "index": 0, "background": 0 }`
+— `background` is the layer the per‑type background landed on, or `null`.
+
+`{ "ok": true, "cleared": true }` means that output has **no variant of that
+slide** in the manifest, so its layer was cleared instead of keeping stale
+content (same behaviour as the app). Out‑of‑range slide → `400`; a
+`slidePresentation` with no manifest → `422 no_manifest`.
+
+To walk through a deck, call it again with the next `index`.
+
+### `POST <BASE>/outputs/:output/layers/:layer/announcement` — `live:write`
+Puts an **announcement** live (the app's *Avisos* panel). The announcement theme
+of that output is resolved server‑side — including bundled/system themes, which
+have no guid and therefore **cannot** be referenced via `themeRef` — and the
+layer is left visible.
+
+```json
+{ "props": { "nome": "Maria", "placa": "ABC1D23" } }
+```
+
+`props` fills the theme's `{placeholders}`. Optional `themeGuid` overrides which
+theme to use (a saved theme asset, or a `bundle:` reference).
+Response: `{ "ok": true, "variables": ["nome", "placa"] }`.
+
+There is **no server‑side auto‑clear**: schedule your own `DELETE`. To reword an
+announcement already on screen without a crossfade, patch the element in place
+(see **Live elements**).
+
+### `GET <BASE>/outputs/:output/announcement` — `outputs:read`
+The `{placeholders}` the output's announcement theme declares — so a client can
+build one field per variable instead of guessing names. Time/timer tokens
+(`{HH}`, `{tMM}`, …) are excluded: the renderer fills those itself.
+
+```json
+{ "variables": ["nome", "placa"],
+  "allVariables": ["nome", "placa"],
+  "theme": { "title": "Aviso da casa" } }
+```
+
+`variables` is this output's theme; `allVariables` is the union across every
+output (what the app's panel shows).
+
+Full walkthroughs: [curl](../examples/curl.md#show-an-announcement-text-on-screen)
+and [Node.js](../examples/node/example-announcement.mjs).
+
+<details>
+<summary>Building an announcement by hand (before <code>/announcement</code> existed)</summary>
+
+An announcement is not a stored asset, so it also goes through body shape **B**
+with `asset.type` set to `"announcement"` and no guid. A **theme is mandatory**
+and this path resolves none, so pass `themeRef` with the guid of a **saved**
+theme asset — bundled/system themes have no guid and cannot be referenced this
+way. Then show the layer yourself.
 
 ```json
 { "presentation": {
@@ -93,14 +161,7 @@ this way — save a copy first.
     "props": { "mensagem": "Prayer meeting at 7:30pm" } } }
 ```
 
-`props` fills the theme's `{placeholders}` — the stock announcement theme uses a
-single `{mensagem}`; your own theme may use any names. Then show the layer, as
-above. To reword it afterwards without a crossfade, patch the element in place
-(see **Live elements**). There is no server‑side auto‑clear: schedule your own
-`DELETE`.
-
-Full walkthroughs: [curl](../examples/curl.md#show-an-announcement-text-on-screen)
-and [Node.js](../examples/node/example-announcement.mjs).
+</details>
 
 ### `DELETE <BASE>/outputs/:output/layers/:layer` — `live:write`
 Clears the layer. Response `{ "ok": true }`.
@@ -202,6 +263,174 @@ Returns the asset **thumbnail image** (png/jpg). Use it directly in an `<img>`:
 
 ```html
 <img src="<BASE>/assets/GUID/thumbnail?token=spk_...">
+```
+
+## Adding assets
+
+Creating content requires the **`assets:write`** scope (separate from
+`assets:read` because it writes to disk). The server owns the whole ingestion
+pipeline — thumbnail, ID3 tags, video normalization, database insert, full-text
+index — so you send content, not files-in-place.
+
+### `POST <BASE>/assets` — `assets:write`
+
+Creates asset(s) from **file** content. Two request forms, same endpoint, picked
+by `Content-Type`:
+
+**`multipart/form-data`** — field `file` (or repeated `files`). Use this for
+anything large: the file is streamed to disk and never buffered in memory.
+
+**`application/json`** — for clients that don't build multipart:
+
+| Field | Required | Meaning |
+|---|---|---|
+| `filename` | yes | File name **with extension** — it decides the asset type |
+| `contentBase64` | one of | The file bytes, base64 (a `data:` URL is accepted) |
+| `sourceUrl` | one of | `http(s)` URL that **the app downloads** |
+
+Optional in both forms:
+
+| Field | Meaning |
+|---|---|
+| `title` | Asset title (defaults to the file name without extension). Ignored when several files are sent in one request |
+| `author` | Free text |
+| `type` | Override within the extension's family — in practice `backgroundVideo` for a video file |
+| `parent` | Destination folder guid (see `POST <BASE>/assets/folder`); omit for the root |
+| `category` | Custom category uuid; omit for the type's own tab |
+| `optimize` | `false` skips video normalization entirely (default `true`) |
+| `allowEncode` | `false` keeps the cheap remux but refuses the costly re-encode |
+
+**Supported files**: images (`.png .jpg .jpeg .bmp`), video (`.mp4 .mov`) and
+audio (`.mp3 .wav .aac`). Themes and songs do **not** come in as files — a song
+is created with structured lyrics (below).
+
+The response is **always** a list, even for a single file, so there is only one
+shape to handle:
+
+```json
+{ "assets": [ { "guid": "…", "title": "Opening", "type": "video", "extension": ".mp4", "version": 1 } ] }
+```
+
+`201 Created` on success. Errors: `400 invalid_filename` / `unsupported_file` /
+`invalid_type` / `invalid_source`, `404 folder_not_found`, `413 too_large`,
+`422 process_failed`, `502 download_failed`.
+
+With **several** files, one rejected file fails the request — the files accepted
+before it are already in the library. Send one file per request when you need to
+know exactly what got in.
+
+> **Video may keep working after the response.** A cheap container fix (remux)
+> happens inline, but a full re-encode is queued in the background and swaps the
+> file when it finishes — which can change the asset's `extension`. Subscribe to
+> the `assets.updated` WebSocket event (`assets:read`) if you need to know.
+
+```bash
+# Multipart — the way to send a real file
+curl -X POST "$BASE/assets" -H "Authorization: Bearer $TOKEN" \
+  -F "file=@/path/to/opening.mp4" \
+  -F "type=backgroundVideo" -F "title=Opening"
+
+# JSON with base64 — handy for small files and for scripts
+curl -X POST "$BASE/assets" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "{\"filename\":\"logo.png\",\"contentBase64\":\"$(base64 -w0 logo.png)\"}"
+
+# JSON with a URL — the app downloads it (no upload from your side)
+curl -X POST "$BASE/assets" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"filename":"clip.mp4","sourceUrl":"https://example.org/clip.mp4","type":"backgroundVideo"}'
+```
+
+`sourceUrl` and multipart have no practical size limit; **base64 does** (the JSON
+body is capped, and base64 inflates by 33% and lives in memory). Above a few tens
+of MB, use one of the other two.
+
+### `POST <BASE>/assets/music` — `assets:write`
+
+Creates a song with **structured lyrics**. This is the organized form: the app
+projects *sections*, not a blob of text.
+
+| Field | Required | Meaning |
+|---|---|---|
+| `title` | yes | Song name |
+| `sections` | yes¹ | The projectable units, in order — see below |
+| `lyrics` | yes¹ | Plain verses (`string[]`), used only when `sections` is absent |
+| `artist` | | String or array of strings |
+| `groups` | | `[{ id, name, color? }]` — named sets referenced by `section.group` |
+| `key` | | Musical key, e.g. `"G"` |
+| `isrc` | | Recording id |
+| `syncedLyrics` | | Raw **LRC** text, or a JSON array of per-verse timecodes |
+| `timecodes` | | `(number \| null)[]` — seconds per verse (`null` = unsynced) |
+| `thumbnailBase64` / `thumbnailUrl` | | Cover art |
+| `parent`, `category` | | Same meaning as in `POST <BASE>/assets` |
+
+¹ one of `sections` or `lyrics` — a song with no verses cannot be projected, so
+it is rejected (`400 missing_lyrics`) rather than saved half-broken.
+
+Each **section**:
+
+| Field | Meaning |
+|---|---|
+| `text` | The slide's text, `\n` for line breaks |
+| `type` | `verse`, `pre-chorus`, `chorus`, `bridge`, `intro`, `outro`, `instrumental`, `tag`, `ending` |
+| `group` | `id` of one of `groups` |
+| `chords` | `[{ position, chord }]` — `position` is a character offset into `text` |
+| `comments` | `[{ position, comment }]` — free notes, same anchoring |
+
+```bash
+curl -X POST "$BASE/assets/music" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{
+    "title": "Sample Song",
+    "artist": ["Sample Author"],
+    "key": "D",
+    "groups": [{ "id": "v", "name": "Verse", "color": "#4f8cff" }],
+    "sections": [
+      { "type": "verse", "text": "This is line one\nAnd this is line two", "group": "v",
+        "chords": [{ "position": 0, "chord": "D" }, { "position": 18, "chord": "A" }] },
+      { "type": "chorus", "text": "This is the chorus" }
+    ]
+  }'
+```
+
+```json
+{
+  "asset": { "guid": "…", "title": "Sample Song", "type": "music", "extension": ".sly" },
+  "lyrics": { "lyrics": ["This is line one\nAnd this is line two", "This is the chorus"],
+              "sections": [ … ], "groups": [ … ] }
+}
+```
+
+**Sections are authoritative**: the searchable text is derived from them, so the
+song is findable in the app's search immediately — you never index anything
+yourself. The response echoes what was **actually stored**: the server drops
+unknown section types, chord/comment positions outside the text and malformed
+group colors instead of failing the whole request. Read `lyrics` back to confirm.
+
+Put a verse live with
+`POST <BASE>/outputs/:output/layers/:layer/music` `{ assetGuid, index }`.
+
+### `PUT <BASE>/assets/:guid/lyrics` — `assets:write`
+
+Replaces the structured lyrics of an existing song — same payload as creation
+(`sections`, `lyrics`, `groups`, `syncedLyrics`, `timecodes`), so correcting a
+verse or regrouping stanzas doesn't mean recreating the asset. Returns the stored
+lyrics. `400 not_a_music` when the guid isn't a song.
+
+### `POST <BASE>/assets/folder` — `assets:write`
+
+Creates a folder, so what you upload lands somewhere instead of piling up in the
+root. Pass its `guid` as `parent` on the calls above.
+
+| Field | Required | Meaning |
+|---|---|---|
+| `title` | | Folder name (default `"Nova pasta"`) |
+| `category` | yes | Tab it belongs to: `image`, `video`, `backgroundVideo`, `audio`, `slidePresentation`, `theme`, … or a custom category uuid |
+| `parent` | | Parent folder guid, for nesting |
+
+```bash
+curl -X POST "$BASE/assets/folder" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{ "title": "Sunday 12/07", "category": "video" }'
 ```
 
 ## Event

@@ -6,7 +6,8 @@
   "description": "Spresenter API integration example (Node.js)",
   "scripts": {
     "live": "node example-live.mjs",
-    "announcement": "node example-announcement.mjs"
+    "announcement": "node example-announcement.mjs",
+    "add-assets": "node example-add-assets.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0"

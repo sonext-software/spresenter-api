@@ -55,7 +55,9 @@ curl -X PATCH <BASE>/outputs/0/layers/2/state \
   **content** and its **visibility** are set by different calls — putting
   something live never flips the layer's `show` on its own.
 - **Asset** — a media/content item (song, video, image, presentation…),
-  identified by a `guid`.
+  identified by a `guid`. You can also **add** assets (`assets:write`): upload a
+  file, or create a song with structured lyrics — see
+  [Adding assets](docs/endpoints.md#adding-assets).
 - **Event** — the service/setlist: the list of assets for the gathering.
 
 ## Notes
