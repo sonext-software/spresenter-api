@@ -235,6 +235,91 @@ curl -X POST "$BASE/outputs/0/layers/2/music" \
 curl "$BASE/setlist" -H "$AUTH"
 ```
 
+## Build a setlist
+
+Needs `setlists:write`. Create it in the library, open it, then fill the schedule.
+
+```bash
+# 1) create + open (opening DISCARDS whatever was being edited — no confirmation)
+ID=$(curl -s -X POST "$BASE/setlists" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"title":"Sunday, 10am"}' | jq -r .id)
+
+curl -X POST "$BASE/setlists/$ID/open" -H "$AUTH"
+
+# 2) a group, already populated
+GROUP=$(curl -s -X POST "$BASE/setlist/groups" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"title":"Worship","assetGuids":["SONG_A","SONG_B"]}' | jq -r .group)
+
+# 3) one more item, at a specific position
+curl -X POST "$BASE/setlist/items" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d "{\"assetGuid\":\"SONG_C\",\"group\":$GROUP,\"index\":0}"
+
+# 4) reorder — inside the group, or across groups ("orphans" = the loose list)
+curl -X PATCH "$BASE/setlist/items/move" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d "{\"from\":{\"group\":$GROUP,\"index\":0},\"to\":{\"group\":$GROUP,\"index\":2}}"
+
+# 5) remove one, and rename the group
+curl -X DELETE "$BASE/setlist/items/$GROUP/2" -H "$AUTH"
+curl -X PATCH "$BASE/setlist/groups/$GROUP" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"title":"Opening worship","color":"#4f8cff"}'
+
+# 6) save it
+curl -X POST "$BASE/setlist/save" -H "$AUTH"
+```
+
+Select an item (preview + the type's view — the same as clicking it in the
+sidebar). It does **not** project: use `/present` or `/music` for that.
+
+```bash
+curl -X POST "$BASE/setlist/items/select" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d "{\"group\":$GROUP,\"index\":0}"
+
+# or by the FLAT position the operator counts on screen (0-based)
+curl -X POST "$BASE/setlist/items/select" \
+  -H "$AUTH" -H "Content-Type: application/json" -d '{"position":0}'
+```
+
+Group indexes shift when groups are added, moved or removed — re-read
+`GET $BASE/setlist` if you are scripting something long.
+
+## Drive the panels
+
+Needs `ui:write` (`ui:read` to list). Handy before asking the operator to look at
+something.
+
+```bash
+# what exists, what's open, what's actually on screen
+curl "$BASE/panels" -H "$AUTH" | jq '.panels[] | {id, open, visible, location}'
+
+# open the Bible panel where the app's own menu would put it
+curl -X POST "$BASE/panels/bible/open" -H "$AUTH"
+
+# bring one INTO VIEW — an open panel can be an inactive tab, i.e. invisible
+curl -X POST "$BASE/panels/mediaControl/select" -H "$AUTH"
+
+# open a plugin panel as a sibling tab of the preview
+curl -X POST "$BASE/panels/plugin:my-plugin:main/open" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"reference":"preview","direction":"within"}'
+
+# float it, then dock it back
+curl -X POST "$BASE/panels/bible/float" \
+  -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"width":520,"height":400}'
+curl -X POST "$BASE/panels/bible/dock" -H "$AUTH"
+
+curl -X POST "$BASE/panels/bible/close" -H "$AUTH"
+```
+
+Panels gated by licence/setting (Mixer and FX need PRO, the automation console
+must be enabled) report `"gated": true` and answer `403 forbidden` on open.
+
 ## Media control
 
 ```bash

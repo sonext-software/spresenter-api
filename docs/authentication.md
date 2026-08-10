@@ -41,8 +41,11 @@ creating the token.
 | `media:read` | Read media playback state |
 | `media:write` | Control playback (play/pause/seek) |
 | `setlists:read` | Read the active setlist and the saved setlists |
+| `setlists:write` | **Build** setlists: create/rename/delete saved ones, open one, and edit the active one's schedule (items, groups, save) |
 | `timer:read` | Read the timer state |
 | `timer:write` | Control the timer |
+| `ui:read` | Read the control app's panels (which are open, which are visible) |
+| `ui:write` | Open, close, select, dock and float panels |
 
 Read and write are separate scopes: `live:write` does **not** imply `live:read`.
 Check both if you need both.
@@ -67,6 +70,8 @@ All errors are JSON in the form:
 | 403 | `forbidden` | Valid token, missing the required scope (see `requiredScope`) |
 | 404 | `not_found` | Resource does not exist |
 | 400 | `bad_request` | Invalid parameter/body |
+| 503 | `unavailable` | The app's main window is not available (see below) |
+| 504 | `timeout` | The app's window did not answer in time (see below) |
 
 Asset creation (`assets:write`) reports the specific problem instead of a generic
 `bad_request`:
@@ -84,6 +89,24 @@ Asset creation (`assets:write`) reports the specific problem instead of a generi
 | 413 | `too_large` | Body/download over the limit |
 | 422 | `process_failed` | The file was rejected while being processed |
 | 502 | `download_failed` | `sourceUrl` could not be fetched |
+
+### The app window did not answer
+
+Most of the API is served by Spresenter's background process, which is always
+there. Two areas are not: the **active setlist's schedule** and the **panel
+layout** live inside the app's window, so those calls are forwarded to it and
+wait for its answer.
+
+That is why `POST <BASE>/setlist/items`, the `/setlist/groups` routes and every
+`/panels` route can return:
+
+- **`503 unavailable`** — the window is closed or still starting (or, for panels,
+  the layout has not finished loading). Retry.
+- **`504 timeout`** — the window is busy or wedged and did not answer within a few
+  seconds. The call may or may not have taken effect; read the state back.
+
+Read‑only setlist routes (`GET <BASE>/setlist`, `/setlists`) are served from a
+cache in the background process and never return these.
 
 ## Enabling / disabling
 

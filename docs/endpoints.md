@@ -457,6 +457,221 @@ Summaries of the **saved** setlists (`id`, `title`, `thumbnail`, `modified`).
 ### `GET <BASE>/setlists/:id` — `setlists:read`
 Full saved setlist (schedules + assets).
 
+## Building a setlist
+
+Everything below needs **`setlists:write`**. Two different things live here:
+
+- the **library** — the saved setlist files, which the app's setlist manager lists;
+- the **active** setlist — the one open in the app right now, whose *schedule* the
+  operator sees in the sidebar. Only one is active at a time.
+
+Editing the active one goes **through the app's window**, so these routes can
+answer `503 unavailable` / `504 timeout` — see
+[authentication](authentication.md#the-app-window-did-not-answer).
+
+### Addressing an item
+
+The schedule is a list of **groups**, each with a list of assets, plus a list of
+**loose** assets the sidebar draws below the groups. So a position is a pair:
+
+| `group` | Means |
+|---|---|
+| `0`, `1`, … | Index of the group in the schedule |
+| `"orphans"` | The loose‑assets list |
+
+…and `index` is the position inside that list. Both are 0‑based. The `group`
+indexes shift when you add, remove or move groups — read `GET <BASE>/setlist`
+back if you are building something long.
+
+### `POST <BASE>/setlists` — `setlists:write`
+Creates an **empty** setlist in the library. It does not become active.
+
+```json
+{ "title": "Sunday, 10am", "description": "…", "init": "…" }
+```
+
+Response: `{ "id": "…", "title": "Sunday, 10am", "modified": 1699999999999 }`.
+
+### `PATCH <BASE>/setlists/:id` — `setlists:write`
+Renames a saved setlist: `{ "title": "New name" }`. If that setlist is the
+**active** one, the title in the app changes too — otherwise the app would keep
+showing the old name and write it back on the next save.
+
+### `POST <BASE>/setlists/:id/duplicate` — `setlists:write`
+Copies it under a new id, with a "copy" suffix in the title. Returns the new
+summary.
+
+### `POST <BASE>/setlists/:id/open` — `setlists:write`
+Makes a saved setlist the **active** one — the app's "open".
+
+> **This discards whatever was being edited**, with no confirmation dialog: there
+> is no operator on the other side of an API call. Call `POST <BASE>/setlist/save`
+> first if the current work matters.
+
+Response: `{ "id": "…", "title": "…" }`.
+
+### `DELETE <BASE>/setlists/:id` — `setlists:write`
+Deletes the file. If it happened to be the active setlist, the copy in the app
+stays open (there is simply no file to save back to).
+
+### `PATCH <BASE>/setlist` — `setlists:write`
+Renames the **active** setlist: `{ "title": "Sunday, 10am" }`.
+
+### `POST <BASE>/setlist/save` — `setlists:write`
+Writes the active setlist to the library (creating the file on first save).
+Returns `{ "id", "title" }`. If writing fails, this returns an error and the
+setlist stays unsaved — it never reports success it didn't achieve.
+
+### `POST <BASE>/setlist/new` — `setlists:write`
+Discards the active setlist and starts a blank one. `{ "title": "…" }` optional.
+Same warning as `/open`: no confirmation.
+
+### `POST <BASE>/setlist/items` — `setlists:write`
+Adds an asset to the schedule.
+
+```jsonc
+{
+  "assetGuid": "5b1c…",   // also accepts "worshipwide/<file>"
+  "group": 0,             // omit → a NEW group is created for this item
+  "groupName": "Worship", // title of that new group (only when `group` is omitted)
+  "index": 2              // omit → appended at the end of the group
+}
+```
+
+Response: the final position, `{ "group": 0, "index": 2 }`.
+
+### `PATCH <BASE>/setlist/items/move` — `setlists:write`
+Reorders an item — inside a group or across groups (the loose list included).
+
+```json
+{ "from": { "group": 0, "index": 3 }, "to": { "group": 1, "index": 0 } }
+```
+
+An `index` past the end of the destination lands at the end. Missing source
+position → `404 not_found`.
+
+### `POST <BASE>/setlist/items/select` — `setlists:write`
+**Selects** an item: it goes to the preview and the app opens that type's view —
+exactly what clicking it in the sidebar does. Two ways to address it:
+
+```jsonc
+{ "group": 0, "index": 2 }   // position in the schedule
+{ "position": 3 }            // FLAT index, counting only what the sidebar draws
+```
+
+`position` is the numbering the operator sees on screen (the same one the MIDI
+positional protocol uses), skipping asset types the sidebar doesn't render.
+
+> **This does not project.** Selecting prepares; putting on screen is
+> `POST <BASE>/outputs/:output/layers/:layer/present` (or `/music`), where theme
+> per verse, background per verse and the selected outputs get resolved.
+
+### `DELETE <BASE>/setlist/items/:group/:index` — `setlists:write`
+Removes an item. `DELETE <BASE>/setlist/items/orphans/0` removes the first loose
+asset.
+
+### `POST <BASE>/setlist/groups` — `setlists:write`
+Creates a group, optionally already populated.
+
+```json
+{ "title": "Worship", "assetGuids": ["5b1c…", "9f2a…"] }
+```
+
+Response: `{ "group": 2, "title": "Worship" }` — `group` is its index, which is
+what the item routes take.
+
+### `PATCH <BASE>/setlist/groups/:group` — `setlists:write`
+Title, colour and icon. `null` clears colour/icon (back to default); an omitted
+field is left alone.
+
+```json
+{ "title": "Worship", "color": "#4f8cff", "icon": "music" }
+```
+
+### `PATCH <BASE>/setlist/groups/:group/move` — `setlists:write`
+Moves the group: `{ "to": 0 }`. A `to` past the end lands at the end.
+
+### `DELETE <BASE>/setlist/groups/:group` — `setlists:write`
+Removes the group **and the items in it**.
+
+> `orphans` is not a group: renaming, moving or deleting it answers
+> `400 bad_request`. Add and remove items in it as usual.
+
+## Panels
+
+The control app's UI is a dock of panels — Preview, Live, Media, Bible, Mixer,
+Media Control, plugin panels, custom web panels… A client can prepare the
+operator's screen for what it is about to do: bring the Bible panel up, put Media
+Control in view, dock a plugin's panel next to the preview.
+
+These routes are forwarded to the app's window, so they can answer
+`503 unavailable` (layout not ready) / `504 timeout` — see
+[authentication](authentication.md#the-app-window-did-not-answer).
+
+Panel ids: the core ones (`sidebar`, `main`, `live`, `preview`, `media`, `bible`,
+`stage`, `mixer`, `fx`, `mediaControl`, `properties`, `announcements`, `timers`,
+`clips`, `macroButtons`, `console`), plus the dynamic ones —
+`plugin:<pluginId>:<panelId>`, `live:<output>`, `mixer:<output>` and
+`custom:<id>`. Don't hardcode them: `GET <BASE>/panels` is the source of truth.
+
+### `GET <BASE>/panels` — `ui:read`
+
+```json
+{ "panels": [
+  { "id": "preview", "title": "Prévia", "kind": "core", "open": true, "visible": true,
+    "location": "grid", "groupId": "group-3", "closable": true, "gated": false },
+  { "id": "mixer", "title": "Mixer", "kind": "core", "open": false, "visible": false,
+    "closable": true, "gated": true }
+] }
+```
+
+| Field | Meaning |
+|---|---|
+| `kind` | `core`, `plugin`, `live`, `mixer` or `custom` |
+| `open` | It is in the layout |
+| `visible` | It is in the layout **and actually on screen** — see below |
+| `location` | `grid` (docked), `floating` or `popout` (its own window). Absent when closed |
+| `groupId` | The dock group it shares with its sibling tabs |
+| `closable` | `false` for the structural ones (`sidebar`, `main`) |
+| `gated` | Unavailable by licence/setting (Mixer and FX need PRO; the automation console must be enabled). Opening it answers `403 forbidden` |
+
+> **`open` is not `visible`.** A panel open as an **inactive tab** of a group is as
+> invisible to the operator as a closed one, and so is one hidden behind another
+> group in fullscreen. If you want the operator to *see* it, use `/select`.
+
+### `POST <BASE>/panels/:id/open` — `ui:write`
+Opens a panel. With no body it lands where the app's own **Panels** menu would put
+it, which is what the operator expects.
+
+```jsonc
+{
+  "float": true,         // open as a floating group instead
+  "reference": "preview", // open relative to another OPEN panel…
+  "direction": "within"   // …left | right | above | below | within (sibling tab)
+}
+```
+
+Already open → it is made the active tab. Returns the panel's state (same shape as
+`GET <BASE>/panels`). Unknown id → `404 not_found`; gated → `403 forbidden`;
+unknown `reference` → `404 not_found`.
+
+### `POST <BASE>/panels/:id/close` — `ui:write`
+Closes it. Not open → `404 not_found`; a non‑closable panel → `403 forbidden`.
+
+### `POST <BASE>/panels/:id/select` — `ui:write`
+**Brings it into view**: opens it if it isn't in the layout, makes it the active
+tab of its group, and leaves another group's fullscreen if one is up. This is the
+one to call before telling the operator to look at something.
+
+### `POST <BASE>/panels/:id/dock` — `ui:write`
+Docks a floating panel into the layout. With no body it joins the first docked
+group; `{ "reference": "preview", "direction": "within" }` places it relative to
+another open panel (`within` = as a sibling tab).
+
+### `POST <BASE>/panels/:id/float` — `ui:write`
+The inverse: pulls it out into a floating group.
+`{ "width": 520, "height": 400, "x": 160, "y": 110 }` — all optional.
+
 ## Media
 
 ### `GET <BASE>/media` — `media:read`

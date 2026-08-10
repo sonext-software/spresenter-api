@@ -133,10 +133,62 @@ export class SpresenterClient {
     return this.#req('POST', '/assets/folder', { title, category, ...(parent ? { parent } : {}) });
   }
 
-  // Setlist
+  // Setlist — reading
   activeSetlist() { return this.#req('GET', '/setlist'); }
+  savedSetlists() { return this.#req('GET', '/setlists'); }
+  savedSetlist(id) { return this.#req('GET', `/setlists/${id}`); }
   /** @deprecated renamed to activeSetlist(). */
   activeEvent() { return this.activeSetlist(); }
+
+  // ── Building a setlist (scope `setlists:write`) ──────────────
+  // A position is a pair: `group` (index, or 'orphans' for the loose list) +
+  // `index`. Group indexes shift as groups are added/moved/removed — re-read
+  // activeSetlist() if you are scripting something long.
+
+  /** Creates an EMPTY setlist in the library (it does not become active). */
+  createSetlist(body = {}) { return this.#req('POST', '/setlists', body); }
+  renameSetlist(id, title) { return this.#req('PATCH', `/setlists/${id}`, { title }); }
+  duplicateSetlist(id) { return this.#req('POST', `/setlists/${id}/duplicate`); }
+  deleteSetlist(id) { return this.#req('DELETE', `/setlists/${id}`); }
+  /** Makes a saved setlist the ACTIVE one. DISCARDS what was being edited — call
+   *  saveSetlist() first if it matters (there is no confirmation dialog). */
+  openSetlist(id) { return this.#req('POST', `/setlists/${id}/open`); }
+
+  /** Writes the active setlist to the library. Throws if the write fails. */
+  saveSetlist() { return this.#req('POST', '/setlist/save'); }
+  /** Discards the active setlist and starts a blank one. */
+  newSetlist(title) { return this.#req('POST', '/setlist/new', title ? { title } : {}); }
+  setSetlistTitle(title) { return this.#req('PATCH', '/setlist', { title }); }
+
+  /** Adds an asset to the schedule. `body` = { assetGuid, group?, groupName?, index? }.
+   *  No `group` → a new group is created for the item. */
+  addSetlistItem(body) { return this.#req('POST', '/setlist/items', body); }
+  removeSetlistItem(group, index) { return this.#req('DELETE', `/setlist/items/${group}/${index}`); }
+  /** Reorders — inside a group or across groups. Both args are { group, index }. */
+  moveSetlistItem(from, to) { return this.#req('PATCH', '/setlist/items/move', { from, to }); }
+  /** Selects (preview + the type's view, like clicking the sidebar). Does NOT
+   *  project — that's present()/setVerse(). `target` = { group, index } or { position }. */
+  selectSetlistItem(target) { return this.#req('POST', '/setlist/items/select', target); }
+
+  /** `body` = { title?, assetGuids? }. Returns { group, title } — `group` is the index. */
+  addSetlistGroup(body = {}) { return this.#req('POST', '/setlist/groups', body); }
+  /** `patch` = { title?, color?, icon? }; null clears colour/icon. */
+  updateSetlistGroup(group, patch) { return this.#req('PATCH', `/setlist/groups/${group}`, patch); }
+  moveSetlistGroup(group, to) { return this.#req('PATCH', `/setlist/groups/${group}/move`, { to }); }
+  /** Removes the group AND the items in it. */
+  removeSetlistGroup(group) { return this.#req('DELETE', `/setlist/groups/${group}`); }
+
+  // ── Panels (scopes `ui:read` / `ui:write`) ───────────────────
+
+  /** Every panel with its state. `visible` ≠ `open`: an inactive tab is invisible. */
+  panels() { return this.#req('GET', '/panels'); }
+  /** `opts` = { float?, reference?, direction? } — direction: left|right|above|below|within. */
+  openPanel(id, opts = {}) { return this.#req('POST', `/panels/${id}/open`, opts); }
+  closePanel(id) { return this.#req('POST', `/panels/${id}/close`); }
+  /** Brings it INTO VIEW: opens if needed, makes it the active tab, leaves fullscreen. */
+  selectPanel(id) { return this.#req('POST', `/panels/${id}/select`); }
+  dockPanel(id, opts = {}) { return this.#req('POST', `/panels/${id}/dock`, opts); }
+  floatPanel(id, opts = {}) { return this.#req('POST', `/panels/${id}/float`, opts); }
 
   // Media
   media() { return this.#req('GET', '/media'); }

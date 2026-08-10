@@ -13,8 +13,13 @@ WebSocket.
 - [WebSocket (real‑time events)](docs/websocket.md)
 - Examples:
   - [curl](examples/curl.md)
-  - [Node.js](examples/node/)
-  - [Python](examples/python/)
+  - [Node.js](examples/node/) — [live](examples/node/example-live.mjs),
+    [announcement](examples/node/example-announcement.mjs),
+    [adding assets](examples/node/example-add-assets.mjs),
+    [building a setlist + panels](examples/node/example-setlist.mjs)
+  - [Python](examples/python/) — [live](examples/python/example_live.py),
+    [adding assets](examples/python/example_add_assets.py),
+    [building a setlist + panels](examples/python/example_setlist.py)
 
 ## Quick start
 
@@ -58,9 +63,21 @@ curl -X PATCH <BASE>/outputs/0/layers/2/state \
   identified by a `guid`. You can also **add** assets (`assets:write`): upload a
   file, or create a song with structured lyrics — see
   [Adding assets](docs/endpoints.md#adding-assets).
-- **Setlist** — the service: the list of assets for the gathering. (It was called
+- **Setlist** — the service: the list of assets for the gathering. You can read it,
+  and with `setlists:write` **build** it — create and open saved setlists, add and
+  reorder items, organize them in groups — see
+  [Building a setlist](docs/endpoints.md#building-a-setlist). (It was called
   "event" in earlier versions; the old scope and paths still work — see
   [Setlist](docs/endpoints.md#setlist).)
+- **Panel** — a pane of the control app's UI (Preview, Live, Media, Bible, Mixer…).
+  With `ui:write` an integration can prepare the operator's screen: open a panel,
+  bring it into view, dock it — see [Panels](docs/endpoints.md#panels).
+
+Two of these live **inside the app's window** rather than in the background
+process: the active setlist's schedule and the panel layout. Calls that write to
+them are forwarded to the window and wait for it, so they can answer
+`503 unavailable` / `504 timeout` —
+[details](docs/authentication.md#the-app-window-did-not-answer).
 
 ## Notes
 
