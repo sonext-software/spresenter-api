@@ -709,6 +709,148 @@ cache. Response: `{ "thumbnail": "/thumbnails/previews/…" }`.
 ### `POST <BASE>/timer` — `timer:write`
 Sets the timer (body = timer state). `DELETE <BASE>/timer` clears it.
 
+## Notifications
+
+The **notification center** is the bell in the control app's title bar — where
+messages sent from the Spresenter dashboard land. An integration can read it and,
+more usefully, **write to it**: this is how you say something to the person
+running the service.
+
+A notification is not a toast. It stays (persisted, the 50 most recent), counts as
+unread on the bell, and — when the app's window is **not focused** — also fires an
+OS notification. That is the point: it reaches the operator who stepped away from
+the machine.
+
+Reading, marking and deleting are forwarded to the app's window, so they can answer
+`503 unavailable` / `504 timeout` — see
+[authentication](authentication.md#the-app-window-did-not-answer). **Publishing is
+not**: it is served by the background process and works even while the window is
+busy.
+
+### `GET <BASE>/notifications` — `notifications:read`
+
+Query: `unreadOnly=true`, `limit=<n>`.
+
+```json
+{ "notifications": [
+  { "id": "9f3…", "title": "Schedule changed", "body": "Ana replaced João on camera 2.",
+    "level": "warning", "sentAt": "2026-08-16T13:04:11.000Z", "from": "Roster", "read": false }
+], "unread": 3 }
+```
+
+`unread` counts the **whole** center, not the slice you asked for — it is the
+number on the bell.
+
+### `POST <BASE>/notifications` — `notifications:write`
+
+```jsonc
+{
+  "title": "Service starts in 5 min",   // required
+  "body": "Band on stage, please.",     // required
+  "level": "info",                      // info | success | warning | error (default info)
+  "from": "Production",                 // who signs it; omitted = no sender shown
+  "id": "call-1930",                    // optional: your own id, for idempotent re-sends
+  "sentAt": "2026-08-16T19:25:00.000Z"  // optional ISO date; defaults to now
+}
+```
+
+Response: `{ "notification": { …, "id": "…" } }`.
+
+- Missing/empty `title` or `body`, or an unknown `level` → `400 bad_request`.
+- The center **dedupes by `id`**, so re-sending the same `id` is a no-op instead of
+  a duplicate card. Omit it and one is generated.
+- It **does not disappear on its own.** Whoever published decides when to
+  `DELETE` it — an auto-clear would hide the message from exactly the person whose
+  hands were busy when it arrived.
+- `sentAt` is what the center sorts by, so a wrong clock reorders the list.
+
+### `POST <BASE>/notifications/read` — `notifications:write`
+Marks everything as read. Response: `{ "read": 3 }` (how many were unread).
+
+### `POST <BASE>/notifications/:id/read` — `notifications:write`
+Marks one as read. Unknown id → `404 not_found` (the center holds the 50 most
+recent, and the operator may have deleted it).
+
+### `DELETE <BASE>/notifications/:id` — `notifications:write`
+Removes one. Unknown id → `404 not_found`.
+
+### `DELETE <BASE>/notifications` — `notifications:write`
+Empties the center. Response: `{ "cleared": 12 }`.
+
+## Plugins
+
+Everything above is what **the app** can do. What an integration usually needs is
+something only *that church's* plugin knows how to do — "pull today's roster",
+"sync with my system", "tell them the service is running late". These routes are
+the bridge to it.
+
+A plugin declares actions by name (`spresenter.requests.on('sync', handler)` — see
+the Spresenter plugin documentation); you call them by that
+name. The app does not interpret the payload or the response: your JSON goes to the
+handler, its return value comes back.
+
+### `GET <BASE>/plugins` — `plugins:read`
+
+```json
+{ "plugins": [
+  { "id": "com.example.roster", "name": "Roster", "version": "1.2.0",
+    "enabled": true, "runtime": "running", "background": true,
+    "permissions": ["live:write"],
+    "actions": [
+      { "action": "sync", "name": "Sync roster", "description": "Pulls today's roster",
+        "sample": { "date": "2026-08-16" } }
+    ] }
+] }
+```
+
+> `actions` lists what the **running** plugin processes have registered. A plugin
+> without `background: true` in its manifest shows an empty list until something
+> calls it — calling still works (the call starts the plugin first), the listing
+> just cannot know beforehand.
+
+### `GET <BASE>/plugins/:pluginId` — `plugins:read`
+The same object for one plugin: `{ "plugin": { … } }`. Not installed →
+`404 not_found`.
+
+### `POST <BASE>/plugins/:pluginId/requests/:action` — `plugins:invoke`
+
+The request body is handed to the plugin's handler; its return value comes back as
+`data`.
+
+```bash
+curl -X POST "<BASE>/plugins/com.example.roster/requests/sync"   -H "Authorization: Bearer spk_YOUR_TOKEN"   -H "Content-Type: application/json"   -d '{"date":"2026-08-16"}'
+```
+
+```json
+{ "pluginId": "com.example.roster", "action": "sync", "data": { "people": 3 } }
+```
+
+Query: `timeoutMs` — how long to wait for the plugin (default **10000**, max
+`60000`).
+
+| HTTP | `code` | When |
+|---|---|---|
+| 404 | `not_found` | The plugin is not installed |
+| 404 | `unknown_action` | The plugin does not expose that action |
+| 409 | `plugin_disabled` | Installed but turned off in Settings → Plugins |
+| 503 | `plugin_unavailable` | Its process would not start, or died mid-call |
+| 504 | `plugin_timeout` | The handler did not answer in time |
+| 4xx/5xx | (the plugin's own) | The handler failed **and chose the status** — e.g. `404` with its own message for "member not found" |
+
+The last row is the important one: a well-written plugin answers `404`/`400`/`409`
+for its own business failures, so your integration can react instead of guessing
+from a 500.
+
+### `GET <BASE>/plugins/:pluginId/requests/:action` — `plugins:invoke`
+
+Same thing, with the **query string as the payload** — for callers that can only
+emit a URL. It needs the same write-ish scope: running a plugin's code is acting,
+not reading.
+
+```bash
+curl "<BASE>/plugins/com.example.roster/requests/sync?date=2026-08-16&token=spk_YOUR_TOKEN"
+```
+
 ## Automation
 
 ### `POST <BASE>/automation/trigger/:routeId` — no token

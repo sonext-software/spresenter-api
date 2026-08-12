@@ -16,10 +16,12 @@ WebSocket.
   - [Node.js](examples/node/) — [live](examples/node/example-live.mjs),
     [announcement](examples/node/example-announcement.mjs),
     [adding assets](examples/node/example-add-assets.mjs),
-    [building a setlist + panels](examples/node/example-setlist.mjs)
+    [building a setlist + panels](examples/node/example-setlist.mjs),
+    [notifying the operator + calling a plugin](examples/node/example-notify-plugin.mjs)
   - [Python](examples/python/) — [live](examples/python/example_live.py),
     [adding assets](examples/python/example_add_assets.py),
-    [building a setlist + panels](examples/python/example_setlist.py)
+    [building a setlist + panels](examples/python/example_setlist.py),
+    [notifying the operator + calling a plugin](examples/python/example_notify_plugin.py)
 
 ## Quick start
 
@@ -72,11 +74,20 @@ curl -X PATCH <BASE>/outputs/0/layers/2/state \
 - **Panel** — a pane of the control app's UI (Preview, Live, Media, Bible, Mixer…).
   With `ui:write` an integration can prepare the operator's screen: open a panel,
   bring it into view, dock it — see [Panels](docs/endpoints.md#panels).
+- **Notification** — a message in the control app's **notification center** (the
+  bell in the title bar). Not a toast: it stays, counts as unread and — with the
+  window unfocused — fires an OS notification. It is how an integration talks to
+  the person running the service — see
+  [Notifications](docs/endpoints.md#notifications).
+- **Plugin action** — everything above is what *the app* can do. A plugin of that
+  installation can expose named actions of its own ("pull today's roster", "sync
+  with my system") and you call them by name; the app relays the payload and the
+  answer without interpreting either — see [Plugins](docs/endpoints.md#plugins).
 
-Two of these live **inside the app's window** rather than in the background
-process: the active setlist's schedule and the panel layout. Calls that write to
-them are forwarded to the window and wait for it, so they can answer
-`503 unavailable` / `504 timeout` —
+Some of these live **inside the app's window** rather than in the background
+process: the active setlist's schedule, the panel layout, and reading/marking the
+notification center (publishing does not). Calls that reach the window wait for
+it, so they can answer `503 unavailable` / `504 timeout` —
 [details](docs/authentication.md#the-app-window-did-not-answer).
 
 ## Notes

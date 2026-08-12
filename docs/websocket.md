@@ -43,6 +43,8 @@ event. You **only receive** events your token has scopes for.
 | `timer.state` | `timer:read` | The timer changed |
 | `theme.updated` | `assets:read` | A theme was updated |
 | `setlist.updated` | `setlists:read` | The active setlist changed |
+| `notifications.new` | `notifications:read` | A notification landed in the center (`data`: `{ id }`) |
+| `assets.updated` | `assets:read` | The library changed (an asset was added, or a background re-encode swapped a file) |
 
 > Events are **notifications**: they usually don't carry the new data itself. When
 > you receive `refresh.live.0`, fetch the updated state with
@@ -55,6 +57,11 @@ event. You **only receive** events your token has scopes for.
 `setlist.updated` also fires for **your own** writes (`POST <BASE>/setlist/items`
 and friends), immediately — so a client that re-syncs on the event will see its own
 change echoed back. Ignore the echo if you already applied it locally.
+
+`notifications.new` carries only the id — read the card itself with
+`GET <BASE>/notifications`. It fires for **every** origin: the dashboard, another
+integration's `POST <BASE>/notifications`, and a plugin. Including your own, so
+ignore the echo of an id you just published.
 
 There is **no event for panels**: the layout is UI state, and a client that changes
 it already knows. Read `GET <BASE>/panels` when you need the current picture.

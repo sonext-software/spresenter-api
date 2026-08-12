@@ -46,6 +46,10 @@ creating the token.
 | `timer:write` | Control the timer |
 | `ui:read` | Read the control app's panels (which are open, which are visible) |
 | `ui:write` | Open, close, select, dock and float panels |
+| `notifications:read` | Read this machine's notification center |
+| `notifications:write` | Publish notifications, and mark/delete the ones in the center |
+| `plugins:read` | List the installed plugins and the actions they expose |
+| `plugins:invoke` | Run an action exposed by a plugin |
 
 Read and write are separate scopes: `live:write` does **not** imply `live:read`.
 Check both if you need both.
@@ -90,6 +94,21 @@ Asset creation (`assets:write`) reports the specific problem instead of a generi
 | 422 | `process_failed` | The file was rejected while being processed |
 | 502 | `download_failed` | `sourceUrl` could not be fetched |
 
+Calling a plugin action (`plugins:invoke`) reports where the failure was:
+
+| HTTP | `code` | When |
+|---|---|---|
+| 404 | `not_found` | The plugin is not installed |
+| 404 | `unknown_action` | The plugin does not expose that action |
+| 409 | `plugin_disabled` | Installed but turned off in Settings → Plugins |
+| 503 | `plugin_unavailable` | Its process would not start, or died mid-call |
+| 504 | `plugin_timeout` | The handler did not answer within `timeoutMs` |
+| 4xx/5xx | (the plugin's own) | The handler failed **and chose the status** — a plugin answers `404` for "member not found" |
+
+The last row is deliberate: everything else on this page is the app's verdict, but
+a plugin action's business failure is the plugin's, and it says so in its own
+status code.
+
 ### The app window did not answer
 
 Most of the API is served by Spresenter's background process, which is always
@@ -97,8 +116,9 @@ there. Two areas are not: the **active setlist's schedule** and the **panel
 layout** live inside the app's window, so those calls are forwarded to it and
 wait for its answer.
 
-That is why `POST <BASE>/setlist/items`, the `/setlist/groups` routes and every
-`/panels` route can return:
+That is why `POST <BASE>/setlist/items`, the `/setlist/groups` routes, every
+`/panels` route and the **read/mark/delete** side of `/notifications` can
+return:
 
 - **`503 unavailable`** — the window is closed or still starting (or, for panels,
   the layout has not finished loading). Retry.
@@ -106,7 +126,9 @@ That is why `POST <BASE>/setlist/items`, the `/setlist/groups` routes and every
   seconds. The call may or may not have taken effect; read the state back.
 
 Read‑only setlist routes (`GET <BASE>/setlist`, `/setlists`) are served from a
-cache in the background process and never return these.
+cache in the background process and never return these. Neither does
+**publishing** a notification (`POST <BASE>/notifications`): it is handled by
+the background process and works even while the window is busy.
 
 ## Enabling / disabling
 

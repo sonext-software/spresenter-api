@@ -320,6 +320,54 @@ curl -X POST "$BASE/panels/bible/close" -H "$AUTH"
 Panels gated by licence/setting (Mixer and FX need PRO, the automation console
 must be enabled) report `"gated": true` and answer `403 forbidden` on open.
 
+## Notify the operator
+
+Needs `notifications:write` (`notifications:read` to list). The card lands in the
+bell of the title bar — it STAYS, counts as unread and, with the window
+unfocused, also fires an OS notification. It never clears itself.
+
+```bash
+# publish (level: info | success | warning | error)
+curl -X POST "$BASE/notifications"   -H "$AUTH" -H "Content-Type: application/json"   -d '{"title":"Service starts in 5 min","body":"Band on stage, please.","level":"info","from":"Production"}'
+# → {"notification":{"id":"9f3…", ...}}
+
+# pass your own id to make a re-send idempotent (the center dedupes by it)
+curl -X POST "$BASE/notifications"   -H "$AUTH" -H "Content-Type: application/json"   -d '{"id":"call-1930","title":"Call time","body":"1930","level":"warning"}'
+
+# read the center back
+curl "$BASE/notifications?unreadOnly=true&limit=5" -H "$AUTH" | jq
+
+# mark and remove — whoever posts is the one who schedules the delete
+curl -X POST "$BASE/notifications/call-1930/read" -H "$AUTH"
+curl -X DELETE "$BASE/notifications/call-1930" -H "$AUTH"
+```
+
+## Call a plugin action
+
+Needs `plugins:invoke` (`plugins:read` to list). This is the bridge to what only
+*that installation's* plugin knows how to do — the app does not interpret the
+payload or the response.
+
+```bash
+# what is installed and which actions each one exposes
+curl "$BASE/plugins" -H "$AUTH" | jq '.plugins[] | {id, enabled, runtime, actions: [.actions[].action]}'
+
+# call one — the body goes to the plugin's handler, its return value comes back
+curl -X POST "$BASE/plugins/com.example.roster/requests/sync"   -H "$AUTH" -H "Content-Type: application/json"   -d '{"date":"2026-08-16"}'
+# → {"pluginId":"com.example.roster","action":"sync","data":{"people":3}}
+
+# the query string as the payload — for callers that can only emit a URL
+curl "$BASE/plugins/com.example.roster/requests/sync?date=2026-08-16&token=spk_YOUR_TOKEN"
+
+# wait longer than the default 10s (max 60000)
+curl -X POST "$BASE/plugins/com.example.roster/requests/import?timeoutMs=45000"   -H "$AUTH" -H "Content-Type: application/json" -d '{}'
+```
+
+A plugin that is installed but turned off answers `409 plugin_disabled`; an action
+it does not expose, `404 unknown_action`; a handler that fails answers with **its
+own** status (`404` for "member not found", …), so read the code instead of
+assuming 500.
+
 ## Media control
 
 ```bash

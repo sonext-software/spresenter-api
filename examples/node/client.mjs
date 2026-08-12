@@ -190,6 +190,46 @@ export class SpresenterClient {
   dockPanel(id, opts = {}) { return this.#req('POST', `/panels/${id}/dock`, opts); }
   floatPanel(id, opts = {}) { return this.#req('POST', `/panels/${id}/float`, opts); }
 
+  // ── Notification center (scopes `notifications:read` / `:write`) ──
+  // The bell in the app's title bar. Unlike a toast, a notification STAYS,
+  // counts as unread and — with the window unfocused — also fires an OS
+  // notification. That is how you reach an operator who stepped away.
+
+  /** The center, newest first. `opts` = { unreadOnly?, limit? }. */
+  notifications(opts = {}) {
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(opts).filter(([, v]) => v !== undefined)),
+    ).toString();
+    return this.#req('GET', `/notifications${qs ? `?${qs}` : ''}`);
+  }
+  /** Publishes one. `body` = { title, body, level?, from?, id?, sentAt? }.
+   *  Pass your own `id` to make a re-send idempotent — the center dedupes by it.
+   *  It does NOT auto-clear: whoever posts is the one who schedules the delete. */
+  notify(body) { return this.#req('POST', '/notifications', body); }
+  markNotificationRead(id) { return this.#req('POST', `/notifications/${id}/read`); }
+  markAllNotificationsRead() { return this.#req('POST', '/notifications/read'); }
+  removeNotification(id) { return this.#req('DELETE', `/notifications/${id}`); }
+  clearNotifications() { return this.#req('DELETE', '/notifications'); }
+
+  // ── Plugins (scopes `plugins:read` / `plugins:invoke`) ───────
+  // The bridge to what only THAT installation's plugin knows how to do. The app
+  // does not interpret the payload or the response.
+
+  /** Installed plugins, each with the actions it exposes. */
+  plugins() { return this.#req('GET', '/plugins'); }
+  plugin(pluginId) { return this.#req('GET', `/plugins/${pluginId}`); }
+  /**
+   * Calls a plugin action and returns `{ pluginId, action, data }`.
+   * `data` is whatever the plugin's handler returned.
+   *
+   * A failing handler answers with ITS OWN status (404 for "not found", …), so
+   * catch and inspect the error code instead of assuming 500.
+   */
+  pluginRequest(pluginId, action, payload = {}, { timeoutMs } = {}) {
+    const qs = timeoutMs ? `?timeoutMs=${timeoutMs}` : '';
+    return this.#req('POST', `/plugins/${pluginId}/requests/${action}${qs}`, payload);
+  }
+
   // Media
   media() { return this.#req('GET', '/media'); }
   play() { return this.#req('POST', '/media/play'); }
