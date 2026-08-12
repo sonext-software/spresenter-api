@@ -2,22 +2,16 @@
 //
 //   BASE="<api base url>" TOKEN=spk_... node example-announcement.mjs "Prayer meeting at 7:30pm"
 //
-// There is no /announcements endpoint: an announcement is not a stored asset,
-// it is a presentation you build on the fly and send to a layer. Three things
-// make it work:
+// `POST …/layers/:layer/announcement` does the same thing the app's Avisos panel
+// does: it resolves that output's announcement theme server-side — including the
+// bundled ones, which have no guid and so cannot be referenced any other way —
+// and leaves the layer VISIBLE. All you provide is `props`, the values for the
+// theme's {placeholders}; ask `GET …/outputs/:output/announcement` which names it
+// declares instead of guessing them.
 //
-//   1. `asset.type` must be "announcement" (no guid — nothing to look up).
-//   2. A THEME IS MANDATORY. Unlike songs (which have their own endpoint that
-//      resolves the theme server-side), nothing resolves an announcement theme
-//      for you — without one the renderer draws nothing at all. Pass
-//      `themeRef` with the guid of a SAVED theme asset (copy it from the theme
-//      editor: ⋮ menu → "Copy theme ID").
-//   3. `props` fills the theme's {placeholders}. The stock announcement theme
-//      uses a single `{mensagem}`; your own theme may use any names.
-//
-// And one step that is easy to miss: after setting the content you must SHOW
-// the layer (`PATCH …/state {"show":true}`). Setting content never flips
-// visibility on its own, so on a hidden layer nothing reaches the screen.
+// Passing `themeGuid` overrides the theme. Building the presentation by hand
+// (`type: "announcement"` + `themeRef` + showing the layer yourself) still works
+// and is what this example used to do — see docs/endpoints.md.
 //
 import { SpresenterClient } from './client.mjs';
 
@@ -32,12 +26,13 @@ const sp = new SpresenterClient({ base, token });
 
 const OUTPUT = Number(process.env.OUTPUT ?? 0);
 const TEXT = process.argv[2] ?? 'Prayer meeting at 7:30pm';
-// Theme placeholder to fill. The stock announcement theme uses {mensagem}.
-const FIELD = process.env.FIELD ?? 'mensagem';
+// Theme placeholder to fill. Left unset, it is read from the theme itself; the
+// stock announcement theme uses {mensagem}.
+const FIELD = process.env.FIELD;
 // Element id to patch live. In the stock theme the text element's id happens to
 // match the placeholder name; in your own theme, read the ids from the Layers
 // panel of the theme editor.
-const ELEMENT = process.env.ELEMENT ?? FIELD;
+const ELEMENT = process.env.ELEMENT;
 // Seconds on screen before the announcement clears itself. The app's
 // Announcements panel has an "auto clear" field, but that timer lives in the
 // app's UI — over the API, whoever posts is the one who schedules the clear.
@@ -55,64 +50,47 @@ async function resolveLayer() {
   return Math.max(0, defs.length - 1);
 }
 
-/** A saved theme asset tagged for announcements. THEME_GUID short-circuits the
- *  lookup — that is what you would hardcode in a real integration. */
-async function resolveThemeGuid() {
-  if (process.env.THEME_GUID) return process.env.THEME_GUID;
-  const themes = await sp.assets({ type: 'theme' });
-  const match = themes.find((a) => a.data?.assetType === 'announcement');
-  return match?.guid ?? null;
-}
-
 async function main() {
   const info = await sp.info();
   console.log(`Connected as token "${info.token.name}" — scopes: ${info.token.scopes.join(', ')}`);
 
   const layer = await resolveLayer();
-  const themeGuid = await resolveThemeGuid();
 
-  if (!themeGuid) {
+  // Which {placeholders} does the theme declare? Asking beats guessing: a custom
+  // announcement theme can use any names, and props for a name the theme does
+  // not have simply go nowhere.
+  const { variables } = await sp.announcementInfo(OUTPUT);
+  const field = FIELD ?? variables[0];
+  if (!field) {
     console.error(
-      'No announcement theme found.\n' +
-      'Create one in the app (Media → Themes → New theme → Announcement), then either\n' +
-      'tag it as an announcement theme or pass THEME_GUID=<guid> to this script.\n' +
-      'Tip: the theme editor copies the guid for you — ⋮ menu → "Copy theme ID".',
+      'The announcement theme of this output declares no {variables}, so there is\n' +
+      'nothing to fill. Edit the theme (Media → Themes) to add a text element with\n' +
+      'a placeholder like {mensagem}, or pass FIELD=<name> to force one.',
     );
     process.exit(1);
   }
 
-  console.log(`Announcing on output ${OUTPUT}, layer ${layer}, theme ${themeGuid}`);
+  console.log(`Announcing on output ${OUTPUT}, layer ${layer}, field {${field}}`);
 
-  // 1) Put the announcement live.
-  await sp.setLive(OUTPUT, layer, {
-    presentation: {
-      title: 'Announcement',
-      asset: { title: 'Announcement', author: null, type: 'announcement' },
-      themeRef: themeGuid,
-      props: { [FIELD]: TEXT },
-    },
-  });
-
-  // 2) Show the layer. THIS STEP IS REQUIRED: posting content does not make the
-  //    layer visible, so on a hidden layer the announcement goes live and
-  //    nothing appears on screen. (The song endpoint is the exception — it
-  //    flips `show` for you. This one does not.)
-  await sp.patchState(OUTPUT, layer, { show: true, opacity: 1 });
+  // 1) Put the announcement live. The theme is resolved server-side and the
+  //    layer is left visible — no separate PATCH …/state needed.
+  await sp.announce(OUTPUT, layer, { [field]: TEXT });
   console.log(`On screen: "${TEXT}"`);
 
-  // 3) Change the wording WITHOUT re-sending the presentation. This patches the
+  // 2) Change the wording WITHOUT re-sending the presentation. This patches the
   //    element in place, so there is no crossfade and no flash of empty screen —
   //    the right tool for a countdown, a score, a running headline.
   await sleep(3000);
+  const element = ELEMENT ?? field;
   try {
-    await sp.setElement(OUTPUT, layer, ELEMENT, { text: `${TEXT} — starting soon` });
-    console.log(`Updated element "${ELEMENT}" live`);
+    await sp.setElement(OUTPUT, layer, element, { text: `${TEXT} — starting soon` });
+    console.log(`Updated element "${element}" live`);
   } catch (e) {
     // Wrong element id is not fatal: the announcement stays on screen as posted.
-    console.warn(`Could not patch element "${ELEMENT}": ${e.message}`);
+    console.warn(`Could not patch element "${element}": ${e.message}`);
   }
 
-  // 4) Clear. DELETE removes the content; hiding the layer as well leaves the
+  // 3) Clear. DELETE removes the content; hiding the layer as well leaves the
   //    output in the state the operator expects to find it in.
   await sleep(Math.max(0, HOLD_SECONDS - 3) * 1000);
   await sp.clearLayer(OUTPUT, layer);
